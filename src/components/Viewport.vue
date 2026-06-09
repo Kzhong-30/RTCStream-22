@@ -86,9 +86,16 @@
       </button>
     </div>
 
-    <div v-if="networkWarning" class="network-warning">
-      <span class="warn-icon">⚠️</span>
-      <span class="warn-text">{{ networkWarning }}</span>
+    <div v-if="networkWarning.show" class="network-warning" :class="networkWarning.level">
+      <span class="warn-icon">{{ networkWarning.icon }}</span>
+      <span class="warn-text">{{ networkWarning.text }}</span>
+      <button
+        v-if="networkWarning.showRefreshBtn"
+        class="warn-refresh-btn"
+        @click="reloadPage"
+      >
+        🔄 一键刷新激活
+      </button>
     </div>
 
     <div class="viewport-container" ref="containerRef">
@@ -207,7 +214,7 @@ const isLoading = ref(false)
 const error = ref<string | null>(null)
 const showHelpModal = ref(false)
 let loadTimer: number | null = null
-let swReady = false
+const swReady = ref(false)
 let swRegistration: ServiceWorkerRegistration | null = null
 
 const quickUrls = [
@@ -231,23 +238,52 @@ const isLocalDemo = computed(() => {
   return u.startsWith('/') || u.includes('/demo.html') || u.startsWith(window.location.origin)
 })
 
-const networkWarning = computed(() => {
+interface NetworkWarn {
+  show: boolean
+  level: 'info' | 'success' | 'warn'
+  icon: string
+  text: string
+  showRefreshBtn: boolean
+}
+
+const networkWarning = computed<NetworkWarn>(() => {
   const net = NETWORK_CONDITIONS.find(n => n.id === props.networkId)
-  if (!net || net.id === 'online') return ''
-  if (!props.url) return ''
-  if (isLocalDemo.value) {
-    return swReady
-      ? `✅ Service Worker 已激活，网络模拟真实生效中（${net.name}：${net.description}）`
-      : `⏳ Service Worker 注册中，刷新一次后网络模拟将生效（${net.name}）`
+  if (!net || net.id === 'online' || !props.url) {
+    return { show: false, level: 'info', icon: '', text: '', showRefreshBtn: false }
   }
-  return `ℹ️ 外部站点受浏览器沙箱保护，仅模拟加载延迟。切换到内置 /demo.html 可启用真实 SW 网络限速。`
+  if (isLocalDemo.value) {
+    if (swReady.value) {
+      return {
+        show: true,
+        level: 'success',
+        icon: '✅',
+        text: `SW 已接管请求，基于请求延迟 + 响应体积模拟 ${net.name}（${net.description}）。注意：非 CDP 级流式带宽节流，仅模拟总体等待时间。`,
+        showRefreshBtn: false
+      }
+    }
+    return {
+      show: true,
+      level: 'warn',
+      icon: '⏳',
+      text: `Service Worker 首次注册尚未接管当前页面，刷新后网络模拟才会对 ${net.name} 生效。`,
+      showRefreshBtn: true
+    }
+  }
+  return {
+    show: true,
+    level: 'info',
+    icon: 'ℹ️',
+    text: `外部站点受浏览器沙箱保护，仅模拟首帧加载延迟（无法拦截内部请求）。切换到内置 /demo.html 启用 SW 拦截 + 延迟模拟。`,
+    showRefreshBtn: false
+  }
 })
 
 const networkDelayText = computed(() => {
   const net = NETWORK_CONDITIONS.find(n => n.id === props.networkId)
   if (!net || net.id === 'online') return ''
   if (net.id === 'offline') return '（离线模式）'
-  return `（模拟${net.name}${isLocalDemo.value ? '·真实限速' : '·延迟'}）`
+  const mode = isLocalDemo.value ? (swReady.value ? '·SW 延迟模拟' : '·待刷新') : '·仅加载延迟'
+  return `（模拟${net.name}${mode}）`
 })
 
 const finalUrl = computed(() => {
@@ -314,8 +350,12 @@ function openScreenshotHelp() {
   showHelpModal.value = true
 }
 
+function reloadPage() {
+  window.location.reload()
+}
+
 async function applyNetworkToSW() {
-  if (!swReady || !swRegistration?.active) return
+  if (!swReady.value || !swRegistration?.active) return
   const net = NETWORK_CONDITIONS.find(n => n.id === props.networkId) || NETWORK_CONDITIONS[0]
   swRegistration.active.postMessage({
     type: 'SET_CONDITION',
@@ -394,21 +434,21 @@ function reload() {
 
 async function initServiceWorker() {
   if (!('serviceWorker' in navigator)) {
-    swReady = false
+    swReady.value = false
     return
   }
   try {
     swRegistration = await navigator.serviceWorker.register('/sw.js', { scope: '/' })
     if (navigator.serviceWorker.controller) {
-      swReady = true
+      swReady.value = true
     } else {
       navigator.serviceWorker.addEventListener('controllerchange', () => {
-        swReady = true
+        swReady.value = true
       })
     }
   } catch (err) {
     console.warn('Service Worker 注册失败（HTTP 环境不支持，本地预览不影响其他功能）：', err)
-    swReady = false
+    swReady.value = false
   }
 }
 
@@ -596,19 +636,54 @@ onMounted(() => {
 
 .network-warning {
   display: flex;
-  align-items: flex-start;
+  align-items: center;
   gap: 8px;
   padding: 8px 12px;
-  background: rgba(237, 137, 54, 0.1);
-  border-bottom: 1px solid rgba(237, 137, 54, 0.25);
   font-size: 11px;
   line-height: 1.5;
-  color: #f6ad55;
   flex-shrink: 0;
+  border-bottom-width: 1px;
+  border-bottom-style: solid;
+}
+
+.network-warning.warn {
+  background: rgba(237, 137, 54, 0.1);
+  border-bottom-color: rgba(237, 137, 54, 0.25);
+  color: #f6ad55;
+}
+
+.network-warning.success {
+  background: rgba(72, 187, 120, 0.08);
+  border-bottom-color: rgba(72, 187, 120, 0.2);
+  color: #68d391;
+}
+
+.network-warning.info {
+  background: rgba(77, 171, 247, 0.08);
+  border-bottom-color: rgba(77, 171, 247, 0.2);
+  color: #63b3ed;
 }
 
 .warn-icon {
   flex-shrink: 0;
+}
+
+.warn-refresh-btn {
+  margin-left: auto;
+  padding: 4px 10px;
+  background: rgba(237, 137, 54, 0.2);
+  border: 1px solid rgba(237, 137, 54, 0.4);
+  color: #fbd38d;
+  border-radius: 6px;
+  font-size: 11px;
+  font-weight: 600;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.warn-refresh-btn:hover {
+  background: rgba(237, 137, 54, 0.35);
+  color: white;
 }
 
 .viewport-container {
