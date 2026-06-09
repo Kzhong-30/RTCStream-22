@@ -86,7 +86,7 @@
       </button>
     </div>
 
-    <div v-if="networkWarning.show" class="network-warning" :class="networkWarning.level">
+    <div v-if="networkWarning" class="network-warning" :class="networkWarning.level">
       <span class="warn-icon">{{ networkWarning.icon }}</span>
       <span class="warn-text">{{ networkWarning.text }}</span>
       <button
@@ -157,10 +157,10 @@
               JavaScript 无法直接读取跨域 iframe 内部的 DOM 内容，
               因此无法通过 <code>html2canvas</code> 等前端库直接截图。
             </p>
-            <h4>✅ 推荐方案（Chrome / Edge）</h4>
+            <h4>✅ 推荐方案 Chrome · Edge</h4>
             <ol>
               <li>按 <kbd>F12</kbd> 打开 DevTools</li>
-              <li>按 <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>P</kbd>（Mac：<kbd>⌘</kbd>+<kbd>⇧</kbd>+<kbd>P</kbd>）</li>
+              <li>按 <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>P</kbd>，Mac 端用 <kbd>⌘</kbd>+<kbd>⇧</kbd>+<kbd>P</kbd></li>
               <li>输入 <code>screenshot</code>，选择以下之一：
                 <ul>
                   <li><strong>Capture area screenshot</strong> — 拖拽框选区域截图</li>
@@ -205,6 +205,7 @@ const emit = defineEmits<{
   'update:networkId': [value: string]
   'update:url': [value: string]
   remove: []
+  'request-save-reload': []
 }>()
 
 const iframeRef = ref<HTMLIFrameElement | null>(null)
@@ -239,30 +240,25 @@ const isLocalDemo = computed(() => {
 })
 
 interface NetworkWarn {
-  show: boolean
   level: 'info' | 'success' | 'warn'
   icon: string
   text: string
   showRefreshBtn: boolean
 }
 
-const networkWarning = computed<NetworkWarn>(() => {
+const networkWarning = computed<NetworkWarn | null>(() => {
   const net = NETWORK_CONDITIONS.find(n => n.id === props.networkId)
-  if (!net || net.id === 'online' || !props.url) {
-    return { show: false, level: 'info', icon: '', text: '', showRefreshBtn: false }
-  }
+  if (!net || net.id === 'online' || !props.url) return null
   if (isLocalDemo.value) {
     if (swReady.value) {
       return {
-        show: true,
         level: 'success',
         icon: '✅',
-        text: `SW 已接管请求，基于请求延迟 + 响应体积模拟 ${net.name}（${net.description}）。注意：非 CDP 级流式带宽节流，仅模拟总体等待时间。`,
+        text: `SW 已接管请求，基于请求延迟 + 响应体积模拟 ${net.name}：${net.description}。注意 非 CDP 级流式带宽节流，仅模拟总体等待时间。`,
         showRefreshBtn: false
       }
     }
     return {
-      show: true,
       level: 'warn',
       icon: '⏳',
       text: `Service Worker 首次注册尚未接管当前页面，刷新后网络模拟才会对 ${net.name} 生效。`,
@@ -270,10 +266,9 @@ const networkWarning = computed<NetworkWarn>(() => {
     }
   }
   return {
-    show: true,
     level: 'info',
     icon: 'ℹ️',
-    text: `外部站点受浏览器沙箱保护，仅模拟首帧加载延迟（无法拦截内部请求）。切换到内置 /demo.html 启用 SW 拦截 + 延迟模拟。`,
+    text: `外部站点受浏览器沙箱保护，仅模拟首帧加载延迟 无法拦截内部请求。切换到内置 /demo.html 启用 SW 拦截 + 延迟模拟。`,
     showRefreshBtn: false
   }
 })
@@ -281,9 +276,9 @@ const networkWarning = computed<NetworkWarn>(() => {
 const networkDelayText = computed(() => {
   const net = NETWORK_CONDITIONS.find(n => n.id === props.networkId)
   if (!net || net.id === 'online') return ''
-  if (net.id === 'offline') return '（离线模式）'
+  if (net.id === 'offline') return '·离线模式'
   const mode = isLocalDemo.value ? (swReady.value ? '·SW 延迟模拟' : '·待刷新') : '·仅加载延迟'
-  return `（模拟${net.name}${mode}）`
+  return `·模拟 ${net.name}${mode}`
 })
 
 const finalUrl = computed(() => {
@@ -351,7 +346,7 @@ function openScreenshotHelp() {
 }
 
 function reloadPage() {
-  window.location.reload()
+  emit('request-save-reload')
 }
 
 async function applyNetworkToSW() {

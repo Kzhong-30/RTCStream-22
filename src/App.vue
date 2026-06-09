@@ -154,6 +154,7 @@
           @update:network-id="(v) => updateViewport(index, 'networkId', v)"
           @update:url="(v) => updateViewport(index, 'url', v)"
           @remove="removeViewport(index)"
+          @request-save-reload="saveAndReload"
         />
       </div>
     </main>
@@ -194,8 +195,50 @@ const globalUrl = ref('/demo.html')
 const globalNetworkId = ref('online')
 const showPanel = ref(false)
 
+const STORAGE_KEY = 'rtc_vp_state_v1'
+
 function makeId() {
   return 'vp_' + Date.now() + '_' + Math.random().toString(36).slice(2, 8)
+}
+
+function saveStateToStorage() {
+  try {
+    const state = {
+      viewports: [...viewports],
+      globalUrl: globalUrl.value,
+      globalNetworkId: globalNetworkId.value,
+      showPanel: showPanel.value,
+      ts: Date.now()
+    }
+    sessionStorage.setItem(STORAGE_KEY, JSON.stringify(state))
+  } catch (e) {
+    console.warn('保存状态失败', e)
+  }
+}
+
+function restoreStateFromStorage(): boolean {
+  try {
+    const raw = sessionStorage.getItem(STORAGE_KEY)
+    if (!raw) return false
+    const state = JSON.parse(raw)
+    if (!state.viewports || !Array.isArray(state.viewports) || state.viewports.length === 0) return false
+    viewports.length = 0
+    state.viewports.forEach((vp: ViewportConfig) => viewports.push({ ...vp }))
+    if (typeof state.globalUrl === 'string') globalUrl.value = state.globalUrl
+    if (typeof state.globalNetworkId === 'string') globalNetworkId.value = state.globalNetworkId
+    if (typeof state.showPanel === 'boolean') showPanel.value = state.showPanel
+    sessionStorage.removeItem(STORAGE_KEY)
+    return true
+  } catch (e) {
+    console.warn('恢复状态失败', e)
+    sessionStorage.removeItem(STORAGE_KEY)
+    return false
+  }
+}
+
+function saveAndReload() {
+  saveStateToStorage()
+  window.location.reload()
 }
 
 function defaultViewport(device?: Device): ViewportConfig {
@@ -380,6 +423,8 @@ function applyLayoutPreset(layout: { devices: string[]; name: string }) {
 }
 
 onMounted(() => {
+  const restored = restoreStateFromStorage()
+  if (restored) return
   if (globalUrl.value.trim()) {
     setTimeout(applyGlobalUrl, 100)
   }
