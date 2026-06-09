@@ -287,10 +287,21 @@ const networkDelayText = computed(() => {
 
 const finalUrl = computed(() => {
   if (!props.url) return ''
-  const u = props.url.trim()
+  let u = props.url.trim()
+  if (u.length === 0) return ''
+  // 绝对路径直接返回，保持原样
   if (u.startsWith('/')) return u
+  // 相对路径 ./xxx 或 ../xxx 规范化为 / 开头的同源绝对路径
+  if (u.startsWith('./') || u.startsWith('../')) {
+    // 简化处理：剥掉 ../ 和 ./ 前缀，视为同源根路径资源
+    while (u.startsWith('../')) u = u.slice(3)
+    if (u.startsWith('./')) u = u.slice(2)
+    return '/' + u
+  }
+  // 没有协议则补 https
   if (!/^https?:\/\//i.test(u)) return 'https://' + u
-  return u
+  // 已有协议，将协议部分统一转小写保持规范
+  return u.replace(/^https?/i, m => m.toLowerCase())
 })
 
 const wrapperStyle = computed(() => ({

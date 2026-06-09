@@ -205,7 +205,7 @@ function makeId() {
 
 function saveStateToStorage() {
   try {
-    // toRaw 解包 reactive 数组后直接序列化，避免 Vue proxy 元数据混入 JSON
+    // toRaw 解包 reactive 数组：避免 JSON.stringify 遍历属性时触发 Vue 响应式 getter 产生副作用
     const state = {
       viewports: toRaw(viewports),
       globalUrl: globalUrl.value,
@@ -225,8 +225,8 @@ function restoreStateFromStorage(): boolean {
     if (!raw) return false
     const state = JSON.parse(raw)
     if (!state.viewports || !Array.isArray(state.viewports) || state.viewports.length === 0) return false
-    viewports.length = 0
-    state.viewports.forEach((vp: ViewportConfig) => viewports.push({ ...vp }))
+    // splice 一次性批量替换，避免 length=0 + forEach push 多次触发响应式更新
+    viewports.splice(0, viewports.length, ...state.viewports.map((vp: ViewportConfig) => ({ ...vp })))
     if (typeof state.globalUrl === 'string') globalUrl.value = state.globalUrl
     if (typeof state.globalNetworkId === 'string') globalNetworkId.value = state.globalNetworkId
     if (typeof state.showPanel === 'boolean') showPanel.value = state.showPanel
