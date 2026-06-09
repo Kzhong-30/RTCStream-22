@@ -69,7 +69,7 @@
             class="url-input"
             v-model="localUrl"
             @keyup.enter="applyUrl"
-            placeholder="输入网址，如 https://example.com"
+            placeholder="输入网址 或 使用内置 /demo.html"
           />
           <button
             class="vp-btn go-btn"
@@ -81,9 +81,14 @@
         </div>
       </div>
 
-      <button class="vp-btn screenshot-btn" @click="takeScreenshot" title="截图">
+      <button class="vp-btn screenshot-btn" @click="openScreenshotHelp" title="截图">
         📷 截图
       </button>
+    </div>
+
+    <div v-if="networkWarning" class="network-warning">
+      <span class="warn-icon">⚠️</span>
+      <span class="warn-text">{{ networkWarning }}</span>
     </div>
 
     <div class="viewport-container" ref="containerRef">
@@ -96,19 +101,22 @@
           <span class="error-icon">⚠️</span>
           <span class="error-text">{{ error }}</span>
           <button class="vp-btn" @click="reload">重试</button>
+          <button class="vp-btn" @click="fallbackToDemo">加载内置 Demo</button>
         </div>
         <div v-if="!url" class="empty-state">
           <div class="empty-icon">🌐</div>
           <div class="empty-title">请输入网址开始测试</div>
-          <div class="empty-hint">支持 http:// 或 https:// 开头的 URL</div>
+          <div class="empty-hint">推荐先使用内置 <code>/demo.html</code>，支持 Service Worker 网络模拟</div>
           <div class="quick-urls">
             <button
               v-for="quick in quickUrls"
-              :key="quick"
+              :key="quick.url"
               class="quick-url-btn"
-              @click="loadQuickUrl(quick)"
+              :class="{ highlight: quick.recommend }"
+              @click="loadQuickUrl(quick.url)"
             >
-              {{ quick }}
+              <span v-if="quick.recommend" style="color:#fbbf24">⭐ </span>
+              {{ quick.label }}
             </button>
           </div>
         </div>
@@ -128,13 +136,47 @@
     <div class="viewport-footer">
       <MediaQueryStatus :width="effectiveWidth" :height="effectiveHeight" />
     </div>
+
+    <transition name="modal">
+      <div v-if="showHelpModal" class="help-modal" @click.self="showHelpModal = false">
+        <div class="help-modal-content">
+          <div class="help-header">
+            <h3>📸 如何截取视口</h3>
+            <button class="close-btn" @click="showHelpModal = false">✕</button>
+          </div>
+          <div class="help-body">
+            <p class="help-note">
+              <strong>⚠️ 重要限制：</strong>由于浏览器同源策略保护，
+              JavaScript 无法直接读取跨域 iframe 内部的 DOM 内容，
+              因此无法通过 <code>html2canvas</code> 等前端库直接截图。
+            </p>
+            <h4>✅ 推荐方案（Chrome / Edge）</h4>
+            <ol>
+              <li>按 <kbd>F12</kbd> 打开 DevTools</li>
+              <li>按 <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>P</kbd>（Mac：<kbd>⌘</kbd>+<kbd>⇧</kbd>+<kbd>P</kbd>）</li>
+              <li>输入 <code>screenshot</code>，选择以下之一：
+                <ul>
+                  <li><strong>Capture area screenshot</strong> — 拖拽框选区域截图</li>
+                  <li><strong>Capture node screenshot</strong> — 选中 iframe 节点后可精确截取</li>
+                  <li><strong>Capture full size screenshot</strong> — 整页长截图</li>
+                </ul>
+              </li>
+            </ol>
+            <h4>⌨️ 系统快捷键</h4>
+            <ul>
+              <li><strong>macOS：</strong><kbd>⌘</kbd>+<kbd>⇧</kbd>+<kbd>4</kbd> 区域截图 / <kbd>⌘</kbd>+<kbd>⇧</kbd>+<kbd>5</kbd> 录屏</li>
+              <li><strong>Windows：</strong><kbd>Win</kbd>+<kbd>Shift</kbd>+<kbd>S</kbd> 区域截图</li>
+            </ul>
+          </div>
+        </div>
+      </div>
+    </transition>
   </div>
 </template>
 
 <script setup lang="ts">
 import { ref, computed, watch, onMounted, nextTick } from 'vue'
-import html2canvas from 'html2canvas'
-import { NETWORK_CONDITIONS, type NetworkCondition } from '../types'
+import { NETWORK_CONDITIONS } from '../types'
 import MediaQueryStatus from './MediaQueryStatus.vue'
 
 const props = defineProps<{
@@ -163,14 +205,15 @@ const containerRef = ref<HTMLDivElement | null>(null)
 const localUrl = ref(props.url)
 const isLoading = ref(false)
 const error = ref<string | null>(null)
+const showHelpModal = ref(false)
 let loadTimer: number | null = null
+let swReady = false
+let swRegistration: ServiceWorkerRegistration | null = null
 
 const quickUrls = [
-  'https://www.baidu.com',
-  'https://www.bing.com',
-  'https://github.com',
-  'https://vuejs.org',
-  'https://www.apple.com.cn'
+  { label: '内置 Demo（支持网络模拟）', url: '/demo.html', recommend: true },
+  { label: 'Example.com', url: 'https://example.com' },
+  { label: 'Wikipedia', url: 'https://en.wikipedia.org/wiki/Main_Page' }
 ]
 
 const sandboxAttrs = 'allow-same-origin allow-scripts allow-forms allow-popups allow-modals allow-presentation allow-downloads'
@@ -183,19 +226,35 @@ const scale = computed({
   set: (v) => emit('update:scale', v)
 })
 
+const isLocalDemo = computed(() => {
+  const u = finalUrl.value
+  return u.startsWith('/') || u.includes('/demo.html') || u.startsWith(window.location.origin)
+})
+
+const networkWarning = computed(() => {
+  const net = NETWORK_CONDITIONS.find(n => n.id === props.networkId)
+  if (!net || net.id === 'online') return ''
+  if (!props.url) return ''
+  if (isLocalDemo.value) {
+    return swReady
+      ? `✅ Service Worker 已激活，网络模拟真实生效中（${net.name}：${net.description}）`
+      : `⏳ Service Worker 注册中，刷新一次后网络模拟将生效（${net.name}）`
+  }
+  return `ℹ️ 外部站点受浏览器沙箱保护，仅模拟加载延迟。切换到内置 /demo.html 可启用真实 SW 网络限速。`
+})
+
 const networkDelayText = computed(() => {
   const net = NETWORK_CONDITIONS.find(n => n.id === props.networkId)
   if (!net || net.id === 'online') return ''
   if (net.id === 'offline') return '（离线模式）'
-  return `（模拟${net.name}）`
+  return `（模拟${net.name}${isLocalDemo.value ? '·真实限速' : '·延迟'}）`
 })
 
 const finalUrl = computed(() => {
   if (!props.url) return ''
-  let u = props.url.trim()
-  if (!/^https?:\/\//i.test(u)) {
-    u = 'https://' + u
-  }
+  const u = props.url.trim()
+  if (u.startsWith('/')) return u
+  if (!/^https?:\/\//i.test(u)) return 'https://' + u
   return u
 })
 
@@ -237,11 +296,8 @@ function onNetworkChange(e: Event) {
 }
 
 function applyUrl() {
-  let u = localUrl.value.trim()
+  const u = localUrl.value.trim()
   if (!u) return
-  if (!/^https?:\/\//i.test(u)) {
-    u = 'https://' + u
-  }
   emit('update:url', u)
 }
 
@@ -250,10 +306,22 @@ function loadQuickUrl(url: string) {
   applyUrl()
 }
 
-function simulateNetworkDelay(net: NetworkCondition) {
-  if (net.id === 'online' || net.id === 'wifi') return 0
-  if (net.latency > 0) return net.latency + Math.random() * 200
-  return 300
+function fallbackToDemo() {
+  loadQuickUrl('/demo.html')
+}
+
+function openScreenshotHelp() {
+  showHelpModal.value = true
+}
+
+async function applyNetworkToSW() {
+  if (!swReady || !swRegistration?.active) return
+  const net = NETWORK_CONDITIONS.find(n => n.id === props.networkId) || NETWORK_CONDITIONS[0]
+  swRegistration.active.postMessage({
+    type: 'SET_CONDITION',
+    scope: isLocalDemo.value ? 'demo.html' : 'global',
+    condition: net.id === 'online' ? null : net
+  })
 }
 
 watch(() => props.url, (newUrl, oldUrl) => {
@@ -262,23 +330,29 @@ watch(() => props.url, (newUrl, oldUrl) => {
     isLoading.value = true
     error.value = null
     const net = NETWORK_CONDITIONS.find(n => n.id === props.networkId) || NETWORK_CONDITIONS[0]
-    if (net.id === 'offline') {
+    if (net.id === 'offline' && !isLocalDemo.value) {
       if (loadTimer) clearTimeout(loadTimer)
       loadTimer = window.setTimeout(() => {
         isLoading.value = false
-        error.value = '模拟离线模式：无法访问网络'
+        error.value = '模拟离线模式：外部站点无法真正断网，建议切换到 /demo.html 体验完整效果'
       }, 800)
       return
     }
-    const delay = simulateNetworkDelay(net)
-    if (delay > 0) {
-      if (loadTimer) clearTimeout(loadTimer)
-      loadTimer = window.setTimeout(() => {}, delay)
+    if (!isLocalDemo.value && net.id !== 'online') {
+      const delay = Math.max(0, (net.latency || 0) + (net.id === 'slow-3g' ? 400 : net.id === '2g' ? 800 : 150))
+      if (delay > 0) {
+        if (loadTimer) clearTimeout(loadTimer)
+        loadTimer = window.setTimeout(() => {}, delay)
+      }
     }
+  }
+  if (newUrl) {
+    nextTick(() => applyNetworkToSW())
   }
 }, { immediate: true })
 
 watch(() => props.networkId, () => {
+  applyNetworkToSW()
   if (props.url) {
     reload()
   }
@@ -293,7 +367,7 @@ function onIframeLoad() {
 function onIframeError() {
   if (loadTimer) clearTimeout(loadTimer)
   isLoading.value = false
-  error.value = '页面加载失败，可能是跨域限制或网址无效'
+  error.value = '页面加载失败，可能是目标站点设置了 X-Frame-Options 禁止被 iframe 嵌入，建议切换到内置 /demo.html'
 }
 
 function reload() {
@@ -302,11 +376,11 @@ function reload() {
   error.value = null
   const currentUrl = finalUrl.value
   const net = NETWORK_CONDITIONS.find(n => n.id === props.networkId) || NETWORK_CONDITIONS[0]
-  if (net.id === 'offline') {
+  if (net.id === 'offline' && !isLocalDemo.value) {
     if (loadTimer) clearTimeout(loadTimer)
     loadTimer = window.setTimeout(() => {
       isLoading.value = false
-      error.value = '模拟离线模式：无法访问网络'
+      error.value = '模拟离线模式：外部站点无法真正断网，建议切换到 /demo.html 体验完整效果'
     }, 800)
     return
   }
@@ -318,38 +392,29 @@ function reload() {
   })
 }
 
-async function takeScreenshot() {
-  if (!containerRef.value || !iframeRef.value) {
-    alert('请先加载网页后再截图')
+async function initServiceWorker() {
+  if (!('serviceWorker' in navigator)) {
+    swReady = false
     return
   }
   try {
-    const scaleRatio = props.scale / 100
-    const canvas = await html2canvas(containerRef.value, {
-      backgroundColor: '#ffffff',
-      scale: Math.max(1, 2 / scaleRatio),
-      useCORS: true,
-      allowTaint: true,
-      logging: false,
-      windowWidth: effectiveWidth.value,
-      windowHeight: effectiveHeight.value
-    })
-    const link = document.createElement('a')
-    link.download = `screenshot-${deviceFilenameSafe()}-${effectiveWidth.value}x${effectiveHeight.value}-${Date.now()}.png`
-    link.href = canvas.toDataURL('image/png')
-    link.click()
+    swRegistration = await navigator.serviceWorker.register('/sw.js', { scope: '/' })
+    if (navigator.serviceWorker.controller) {
+      swReady = true
+    } else {
+      navigator.serviceWorker.addEventListener('controllerchange', () => {
+        swReady = true
+      })
+    }
   } catch (err) {
-    console.error('截图失败:', err)
-    alert('截图失败：由于浏览器同源策略，iframe 中的内容可能无法被直接截图。请确保目标网站允许跨域访问。')
+    console.warn('Service Worker 注册失败（HTTP 环境不支持，本地预览不影响其他功能）：', err)
+    swReady = false
   }
-}
-
-function deviceFilenameSafe() {
-  return props.deviceName.replace(/[^\w\u4e00-\u9fa5-]/g, '_')
 }
 
 onMounted(() => {
   localUrl.value = props.url
+  initServiceWorker()
 })
 </script>
 
@@ -365,6 +430,7 @@ onMounted(() => {
   overflow: hidden;
   min-width: 0;
   min-height: 0;
+  position: relative;
 }
 
 .viewport-header {
@@ -519,13 +585,30 @@ onMounted(() => {
 }
 
 .screenshot-btn {
-  background: linear-gradient(135deg, #805ad5, #6b46c1);
+  background: linear-gradient(135deg, #ed8936, #dd6b20);
   color: white;
   font-weight: 600;
 }
 
 .screenshot-btn:hover {
-  background: linear-gradient(135deg, #6b46c1, #553c9a);
+  background: linear-gradient(135deg, #dd6b20, #c05621);
+}
+
+.network-warning {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 8px 12px;
+  background: rgba(237, 137, 54, 0.1);
+  border-bottom: 1px solid rgba(237, 137, 54, 0.25);
+  font-size: 11px;
+  line-height: 1.5;
+  color: #f6ad55;
+  flex-shrink: 0;
+}
+
+.warn-icon {
+  flex-shrink: 0;
 }
 
 .viewport-container {
@@ -618,6 +701,15 @@ onMounted(() => {
   color: #718096;
 }
 
+.empty-hint code {
+  background: #2d3748;
+  padding: 2px 6px;
+  border-radius: 4px;
+  color: #4dabf7;
+  font-family: 'SF Mono', Menlo, Consolas, monospace;
+  font-size: 11px;
+}
+
 .quick-urls {
   display: flex;
   flex-wrap: wrap;
@@ -635,10 +727,21 @@ onMounted(() => {
   font-size: 12px;
 }
 
+.quick-url-btn.highlight {
+  background: rgba(251, 191, 36, 0.1);
+  border-color: #f6ad55;
+  color: #fbd38d;
+}
+
 .quick-url-btn:hover {
   background: #4a5568;
   color: white;
   border-color: #4dabf7;
+}
+
+.quick-url-btn.highlight:hover {
+  background: rgba(251, 191, 36, 0.2);
+  border-color: #f6ad55;
 }
 
 iframe {
@@ -651,5 +754,132 @@ iframe {
   background: #0f172a;
   border-top: 1px solid #2d3748;
   flex-shrink: 0;
+}
+
+.help-modal {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.7);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+  padding: 24px;
+}
+
+.help-modal-content {
+  background: #1a202c;
+  border-radius: 12px;
+  max-width: 520px;
+  width: 100%;
+  max-height: 90vh;
+  overflow: auto;
+  border: 1px solid #4a5568;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
+}
+
+.help-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 16px 20px;
+  border-bottom: 1px solid #2d3748;
+  position: sticky;
+  top: 0;
+  background: #1a202c;
+}
+
+.help-header h3 {
+  font-size: 16px;
+  font-weight: 700;
+  color: #eaeaea;
+}
+
+.close-btn {
+  width: 32px;
+  height: 32px;
+  background: #2d3748;
+  color: #a0aec0;
+  border-radius: 8px;
+  font-size: 14px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.close-btn:hover {
+  background: #e53e3e;
+  color: white;
+}
+
+.help-body {
+  padding: 20px;
+  font-size: 13px;
+  line-height: 1.7;
+  color: #cbd5e0;
+}
+
+.help-body h4 {
+  color: #4dabf7;
+  font-size: 14px;
+  margin: 16px 0 10px;
+}
+
+.help-body h4:first-of-type {
+  margin-top: 0;
+}
+
+.help-note {
+  padding: 12px 14px;
+  background: rgba(237, 137, 54, 0.1);
+  border: 1px solid rgba(237, 137, 54, 0.3);
+  border-radius: 8px;
+  color: #fbd38d;
+  margin-bottom: 12px;
+}
+
+.help-body code {
+  background: #2d3748;
+  padding: 2px 6px;
+  border-radius: 4px;
+  color: #4dabf7;
+  font-family: 'SF Mono', Menlo, Consolas, monospace;
+  font-size: 12px;
+}
+
+.help-body ol,
+.help-body ul {
+  padding-left: 20px;
+  margin: 8px 0;
+}
+
+.help-body li {
+  margin: 6px 0;
+}
+
+.help-body ul ul {
+  margin-top: 6px;
+}
+
+kbd {
+  display: inline-block;
+  padding: 2px 8px;
+  background: linear-gradient(180deg, #4a5568, #2d3748);
+  color: #eaeaea;
+  border-radius: 4px;
+  border: 1px solid #718096;
+  box-shadow: 0 1px 0 #1a202c;
+  font-size: 11px;
+  font-family: 'SF Mono', Menlo, Consolas, monospace;
+}
+
+.modal-enter-active,
+.modal-leave-active {
+  transition: opacity 0.2s ease;
+}
+
+.modal-enter-from,
+.modal-leave-to {
+  opacity: 0;
 }
 </style>

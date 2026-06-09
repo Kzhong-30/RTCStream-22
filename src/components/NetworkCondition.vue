@@ -24,7 +24,7 @@
 
 <script setup lang="ts">
 import { computed } from 'vue'
-import { NETWORK_CONDITIONS, type NetworkCondition } from '../types'
+import { NETWORK_CONDITIONS } from '../types'
 
 const props = defineProps<{
   modelValue: string

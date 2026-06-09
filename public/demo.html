@@ -1,0 +1,189 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>响应式 Demo 页面</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    min-height: 100vh;
+    color: #333;
+  }
+  .header {
+    background: rgba(255,255,255,0.95);
+    padding: 16px 24px;
+    box-shadow: 0 2px 12px rgba(0,0,0,0.1);
+  }
+  .header-inner {
+    max-width: 1200px;
+    margin: 0 auto;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+  .logo { font-weight: 800; font-size: 20px; color: #667eea; }
+  .nav { display: flex; gap: 20px; }
+  .nav a { color: #555; text-decoration: none; font-size: 14px; font-weight: 500; }
+  .nav a:hover { color: #667eea; }
+  .hamburger { display: none; font-size: 24px; cursor: pointer; }
+  .hero {
+    max-width: 1200px;
+    margin: 0 auto;
+    padding: 60px 24px;
+    color: white;
+    text-align: center;
+  }
+  .hero h1 { font-size: 48px; margin-bottom: 16px; font-weight: 800; line-height: 1.2; }
+  .hero p { font-size: 18px; opacity: 0.9; margin-bottom: 32px; max-width: 600px; margin-left: auto; margin-right: auto; }
+  .hero-actions { display: flex; gap: 12px; justify-content: center; flex-wrap: wrap; }
+  .btn {
+    padding: 12px 24px;
+    border-radius: 8px;
+    font-weight: 600;
+    font-size: 14px;
+    border: none;
+    cursor: pointer;
+    transition: all 0.2s;
+  }
+  .btn-primary { background: white; color: #667eea; }
+  .btn-primary:hover { transform: translateY(-2px); box-shadow: 0 6px 20px rgba(0,0,0,0.2); }
+  .btn-secondary { background: transparent; color: white; border: 2px solid rgba(255,255,255,0.5); }
+  .btn-secondary:hover { background: rgba(255,255,255,0.1); }
+  .section {
+    max-width: 1200px;
+    margin: 0 auto;
+    padding: 40px 24px;
+  }
+  .cards {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 16px;
+  }
+  .card {
+    background: white;
+    border-radius: 12px;
+    padding: 24px;
+    box-shadow: 0 4px 16px rgba(0,0,0,0.08);
+    transition: all 0.2s;
+  }
+  .card:hover { transform: translateY(-4px); box-shadow: 0 8px 24px rgba(0,0,0,0.12); }
+  .card-icon { font-size: 36px; margin-bottom: 12px; }
+  .card h3 { font-size: 16px; margin-bottom: 8px; color: #222; }
+  .card p { font-size: 13px; color: #666; line-height: 1.5; }
+  .bp-tag {
+    display: inline-block;
+    margin-top: 12px;
+    padding: 4px 10px;
+    background: #667eea;
+    color: white;
+    border-radius: 20px;
+    font-size: 11px;
+    font-weight: 600;
+  }
+  .info-box {
+    background: rgba(255,255,255,0.15);
+    backdrop-filter: blur(8px);
+    padding: 20px;
+    border-radius: 12px;
+    margin-top: 24px;
+    color: white;
+    font-size: 13px;
+    line-height: 1.7;
+  }
+  @media (max-width: 1024px) {
+    .cards { grid-template-columns: repeat(2, 1fr); }
+    .hero h1 { font-size: 36px; }
+  }
+  @media (max-width: 640px) {
+    .nav { display: none; }
+    .hamburger { display: block; }
+    .hero { padding: 32px 16px; }
+    .hero h1 { font-size: 28px; }
+    .hero p { font-size: 15px; }
+    .cards { grid-template-columns: 1fr; }
+    .section { padding: 24px 16px; }
+  }
+</style>
+</head>
+<body>
+  <header class="header">
+    <div class="header-inner">
+      <div class="logo">✨ DemoShop</div>
+      <nav class="nav">
+        <a href="#">首页</a>
+        <a href="#">产品</a>
+        <a href="#">方案</a>
+        <a href="#">价格</a>
+        <a href="#">关于</a>
+      </nav>
+      <div class="hamburger">☰</div>
+    </div>
+  </header>
+
+  <section class="hero">
+    <h1>为各种屏幕设计的完美体验</h1>
+    <p>这是一个内置的响应式演示页面，用于测试各种视口尺寸、网络条件和媒体查询效果。调整上方的设备尺寸以查看响应式布局变化。</p>
+    <div class="hero-actions">
+      <button class="btn btn-primary">立即开始</button>
+      <button class="btn btn-secondary">了解更多</button>
+    </div>
+    <div class="info-box" id="infoBox">
+      <strong>📊 视口信息</strong><br/>
+      <span id="vpInfo">加载中...</span>
+    </div>
+  </section>
+
+  <section class="section" style="background:white; border-radius:24px 24px 0 0;">
+    <h2 style="font-size:24px; margin-bottom:24px; color:#222;">🎯 核心功能</h2>
+    <div class="cards">
+      <div class="card">
+        <div class="card-icon">📱</div>
+        <h3>移动端优先</h3>
+        <p>从小屏设备开始设计，逐步向大屏扩展，保证在任何尺寸上都有出色体验。</p>
+        <span class="bp-tag">≤ 640px</span>
+      </div>
+      <div class="card">
+        <div class="card-icon">💻</div>
+        <h3>桌面增强</h3>
+        <p>在大屏设备上充分利用空间，提供更丰富的布局和更详细的信息展示。</p>
+        <span class="bp-tag">≥ 1024px</span>
+      </div>
+      <div class="card">
+        <div class="card-icon">🌐</div>
+        <h3>网络模拟</h3>
+        <p>内置页面支持通过 Service Worker 真正模拟慢速网络，验证加载性能。</p>
+        <span class="bp-tag">SW 拦截</span>
+      </div>
+      <div class="card">
+        <div class="card-icon">🎨</div>
+        <h3>断点系统</h3>
+        <p>SM / MD / LG / XL 等多档断点，满足从手机到 4K 显示器的所有场景。</p>
+        <span class="bp-tag">8 档断点</span>
+      </div>
+    </div>
+  </section>
+
+<script>
+  function updateInfo() {
+    const w = window.innerWidth;
+    const h = window.innerHeight;
+    const dpr = window.devicePixelRatio || 1;
+    let bp = '3XL+';
+    if (w <= 320) bp = 'XS';
+    else if (w <= 480) bp = 'S';
+    else if (w <= 640) bp = 'SM';
+    else if (w <= 768) bp = 'MD';
+    else if (w <= 1024) bp = 'LG';
+    else if (w <= 1280) bp = 'XL';
+    else if (w <= 1536) bp = '2XL';
+    document.getElementById('vpInfo').innerHTML =
+      `宽度: <strong>${w}px</strong> | 高度: <strong>${h}px</strong> | DPR: <strong>${dpr}</strong> | 断点: <strong style="color:#fbbf24">${bp}</strong> | 方向: <strong>${w > h ? '横屏' : '竖屏'}</strong>`;
+  }
+  updateInfo();
+  window.addEventListener('resize', updateInfo);
+</script>
+</body>
+</html>

@@ -190,7 +190,7 @@ interface ViewportConfig {
   deviceId?: string
 }
 
-const globalUrl = ref('https://vuejs.org')
+const globalUrl = ref('/demo.html')
 const globalNetworkId = ref('online')
 const showPanel = ref(false)
 
