@@ -205,8 +205,9 @@ function makeId() {
 
 function saveStateToStorage() {
   try {
+    // toRaw 解包 reactive 数组后直接序列化，避免 Vue proxy 元数据混入 JSON
     const state = {
-      viewports: toRaw(viewports).map(vp => ({ ...vp })),
+      viewports: toRaw(viewports),
       globalUrl: globalUrl.value,
       globalNetworkId: globalNetworkId.value,
       showPanel: showPanel.value,

@@ -157,7 +157,7 @@
               JavaScript 无法直接读取跨域 iframe 内部的 DOM 内容，
               因此无法通过 <code>html2canvas</code> 等前端库直接截图。
             </p>
-            <h4>✅ 推荐方案 Chrome · Edge</h4>
+            <h4>✅ 推荐方案 Chrome 或 Edge</h4>
             <ol>
               <li>按 <kbd>F12</kbd> 打开 DevTools</li>
               <li>按 <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>P</kbd>，Mac 端用 <kbd>⌘</kbd>+<kbd>⇧</kbd>+<kbd>P</kbd></li>
@@ -280,7 +280,8 @@ const networkDelayText = computed(() => {
   const net = NETWORK_CONDITIONS.find(n => n.id === props.networkId)
   if (!net || net.id === 'online') return ''
   if (net.id === 'offline') return '，离线模式'
-  const mode = isLocalDemo.value ? (swReady.value ? '，SW 延迟模拟' : '，待刷新生效') : '，仅加载延迟'
+  if (isLocalDemo.value && !swReady.value) return `，待刷新生效后启用 SW 模拟 ${net.name}`
+  const mode = isLocalDemo.value ? '，SW 延迟模拟' : '，仅加载延迟'
   return `，模拟 ${net.name}${mode}`
 })
 
@@ -445,7 +446,7 @@ async function initServiceWorker() {
       })
     }
   } catch (err) {
-    console.warn('Service Worker 注册失败（HTTP 环境不支持，本地预览不影响其他功能）：', err)
+    console.warn('Service Worker 注册失败，HTTP 环境不支持，本地预览不影响其他功能：', err)
     swReady.value = false
   }
 }
