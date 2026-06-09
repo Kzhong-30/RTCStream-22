@@ -199,6 +199,9 @@ const props = defineProps<{
   canRemove: boolean
 }>()
 
+// emit 事件说明：
+// request-save-reload —— 由 SW 首次激活场景触发，通知父组件先持久化所有视口配置再整页刷新
+//                        不在子组件内直接 reload，是为了统一管理副作用，确保刷新前状态已安全保存
 const emit = defineEmits<{
   'update:scale': [value: number]
   'update:isLandscape': [value: boolean]
@@ -219,7 +222,7 @@ const swReady = ref(false)
 let swRegistration: ServiceWorkerRegistration | null = null
 
 const quickUrls = [
-  { label: '内置 Demo（支持网络模拟）', url: '/demo.html', recommend: true },
+  { label: '内置 Demo，支持网络模拟', url: '/demo.html', recommend: true },
   { label: 'Example.com', url: 'https://example.com' },
   { label: 'Wikipedia', url: 'https://en.wikipedia.org/wiki/Main_Page' }
 ]
@@ -254,21 +257,21 @@ const networkWarning = computed<NetworkWarn | null>(() => {
       return {
         level: 'success',
         icon: '✅',
-        text: `SW 已接管请求，基于请求延迟 + 响应体积模拟 ${net.name}：${net.description}。注意 非 CDP 级流式带宽节流，仅模拟总体等待时间。`,
+        text: `SW 接管生效，模拟 ${net.name} 参数：${net.description}。注意：非 CDP 流式节流，仅模拟总体等待时长。`,
         showRefreshBtn: false
       }
     }
     return {
       level: 'warn',
       icon: '⏳',
-      text: `Service Worker 首次注册尚未接管当前页面，刷新后网络模拟才会对 ${net.name} 生效。`,
+      text: `Service Worker 首次注册未接管页面，刷新后对 ${net.name} 的网络模拟才生效。`,
       showRefreshBtn: true
     }
   }
   return {
     level: 'info',
     icon: 'ℹ️',
-    text: `外部站点受浏览器沙箱保护，仅模拟首帧加载延迟 无法拦截内部请求。切换到内置 /demo.html 启用 SW 拦截 + 延迟模拟。`,
+    text: `外部站点受沙箱保护，仅模拟首帧加载延迟，无法拦截内部请求。切换到内置 /demo.html 启用 SW 拦截加延迟模拟。`,
     showRefreshBtn: false
   }
 })
@@ -276,9 +279,9 @@ const networkWarning = computed<NetworkWarn | null>(() => {
 const networkDelayText = computed(() => {
   const net = NETWORK_CONDITIONS.find(n => n.id === props.networkId)
   if (!net || net.id === 'online') return ''
-  if (net.id === 'offline') return '·离线模式'
-  const mode = isLocalDemo.value ? (swReady.value ? '·SW 延迟模拟' : '·待刷新') : '·仅加载延迟'
-  return `·模拟 ${net.name}${mode}`
+  if (net.id === 'offline') return '，离线模式'
+  const mode = isLocalDemo.value ? (swReady.value ? '，SW 延迟模拟' : '，待刷新生效') : '，仅加载延迟'
+  return `，模拟 ${net.name}${mode}`
 })
 
 const finalUrl = computed(() => {

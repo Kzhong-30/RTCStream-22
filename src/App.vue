@@ -136,6 +136,8 @@
         class="viewport-grid"
         :style="gridStyle"
       >
+        <!-- Viewport 组件事件说明：
+             @request-save-reload — SW 首次激活时由子组件触发，父组件先把所有视口配置持久化到 sessionStorage 再刷新，确保刷新后状态还原 -->
         <Viewport
           v-for="(vp, index) in viewports"
           :key="vp.id"
@@ -171,7 +173,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, reactive, onMounted } from 'vue'
+import { ref, computed, reactive, onMounted, toRaw } from 'vue'
 import DeviceSelector from './components/DeviceSelector.vue'
 import CustomSizeInput from './components/CustomSizeInput.vue'
 import NetworkCondition from './components/NetworkCondition.vue'
@@ -204,7 +206,7 @@ function makeId() {
 function saveStateToStorage() {
   try {
     const state = {
-      viewports: [...viewports],
+      viewports: toRaw(viewports).map(vp => ({ ...vp })),
       globalUrl: globalUrl.value,
       globalNetworkId: globalNetworkId.value,
       showPanel: showPanel.value,
@@ -236,6 +238,8 @@ function restoreStateFromStorage(): boolean {
   }
 }
 
+// SW 首次激活场景下触发：子组件通过事件通知父组件先持久化视口配置再整页刷新
+// 不直接在子组件里调用 location.reload 是为了统一管理副作用，确保刷新前所有状态都已安全落盘到 sessionStorage
 function saveAndReload() {
   saveStateToStorage()
   window.location.reload()
